@@ -1,0 +1,28 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "route-sim",
+  "outputfilename": "route-sim",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+    "info": {
+    "companyName": "maritimeDevs",
+    "productName": "NMEA Simulator",
+    "productVersion": "1.0.0",
+    "copyright": "Maritime Devs",
+    "comments": "Maritime Devs - maritimedevs.org",
+    "fileAssociations": [
+      {
+        "ext": "rtz",
+        "name": "RTZ Route",
+        "description": "RTZ Route",
+        "iconName": "appicon"
+      }
+    ]
+  },
+  "author": {
+    "name": "Pete",
+    "email": "pete@mmsio.com"
+  }
+}
