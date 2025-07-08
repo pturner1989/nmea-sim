@@ -12,7 +12,7 @@ jobs:
     
     steps:
       - name: Wails Build Action
-        uses: dAppServer/wails-build-action@v2.2
+        uses: dAppServer/wails-build-action@main
         with:
           build-name: nmea-sim
           build-platform: windows/amd64,linux/amd64,darwin/arm64
