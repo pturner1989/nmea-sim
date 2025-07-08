@@ -1,24 +1,30 @@
-name: Build Application
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
+name: Wails build
+on: [push, pull_request]
 jobs:
   build:
-    runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ["linux/amd64", "windows/amd64", "darwin/universal"]
+        include:
+          - platform: "linux/amd64"
+            os: ubuntu-latest
+            name: nmea-sim
+          - platform: "windows/amd64"
+            os: windows-latest
+            name: nmea-sim
+          - platform: "darwin/universal"
+            os: macos-latest
+            name: nmea-sim
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
-         submodules: recursive
-      - name: Wails Build Action
-        uses: dAppServer/wails-build-action@main
+          submodules: recursive
+      - uses: dAppServer/wails-build-action@main
         with:
-          build-name: nmea-sim
-          build-platform: windows/amd64,linux/amd64,darwin/arm64
+          build-name: ${{ matrix.name }}
+          build-platform: ${{ matrix.platform }}
           wails-version: "v2.9.0"
           nsis: true
           package: true
