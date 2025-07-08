@@ -1,4 +1,4 @@
-name: Wails build
+name: Simulator
 on: [push, pull_request]
 jobs:
   build:
@@ -12,10 +12,10 @@ jobs:
             name: nmea-sim
           - platform: "windows/amd64"
             os: windows-latest
-            name: nmea-sim
+            name: nmea-sim.exe
           - platform: "darwin/universal"
             os: macos-latest
-            name: nmea-sim
+            name: nmea-sim.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,5 +26,4 @@ jobs:
           build-name: ${{ matrix.name }}
           build-platform: ${{ matrix.platform }}
           wails-version: "v2.9.0"
-          nsis: true
           package: true
