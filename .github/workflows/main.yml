@@ -16,5 +16,6 @@ jobs:
         with:
           build-name: nmea-sim
           build-platform: windows/amd64,linux/amd64,darwin/arm64
+          wails-version: "v2.9.0"
           nsis: true
           package: true
