@@ -21,6 +21,7 @@ type App struct {
 	mu        sync.RWMutex
 	isRunning bool
 	mode      string
+	rtzFileOnStartup string
 }
 
 // SimulationStatus represents the current state for frontend
@@ -80,6 +81,9 @@ func (a *App) OnStartup(ctx context.Context) {
 // OnDomReady is called after front-end resources have been loaded
 func (a *App) OnDomReady(ctx context.Context) {
 	// Optional: Show a startup message
+	if a.rtzFileOnStartup != "" {
+		runtime.EventsEmit(ctx, "openRTZFile", a.rtzFileOnStartup)
+	}
 }
 
 // OnBeforeClose is called when the application is about to quit

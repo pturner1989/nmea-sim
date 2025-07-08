@@ -1,6 +1,7 @@
 // App.tsx
 import { useState, useEffect } from 'react';
 import { StartManualSimulation, StartRTZSimulation, StopSimulation, UpdateSpeed, UpdateCourse, GetStatus, OpenFileDialog, ValidateRTZFile } from '../wailsjs/go/main/App';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 import StatusBar from './components/StatusBar';
 import ManualMode from './components/ManualMode';
 import RTZMode from './components/RTZMode';
@@ -21,6 +22,7 @@ function App() {
     speed: 0,
     course: 0
   });
+  const [startupRTZFile, setStartupRTZFile] = useState<string | null>(null);
 
   // Status polling
   useEffect(() => {
@@ -49,6 +51,15 @@ function App() {
 
     return () => clearInterval(interval);
   }, [status.isRunning]);
+
+  useEffect(() => {
+    // Listen for backend event
+    const off = EventsOn("openRTZFile", (filePath: string) => {
+      setCurrentMode('rtz');
+      setStartupRTZFile(filePath);
+    });
+    return () => { off(); };
+  }, []);
 
   const handleStartManual = async (config: ManualConfig) => {
     try {
@@ -200,6 +211,7 @@ function App() {
                 onFileSelect={handleFileSelect}
                 onValidateFile={handleValidateFile}
                 isRunning={status.isRunning}
+                startupFile={startupRTZFile}
               />
             )}
           </div>
