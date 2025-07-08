@@ -1,10 +1,23 @@
- - name: Wails Build Action
-  # You may pin to the exact commit or the version.
-  # uses: dAppServer/wails-build-action@d0b7d7500f3344ebed78d1a59e3f183977d62d1f
-  uses: dAppServer/wails-build-action@v2.2
-  with:
-    build-name: nmea-sim
-    build-platform: windows/amd64,linux/amd64,darwin/arm64
-    nsis: true
-    package: true
-          
+name: Build Application
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Wails Build Action
+        uses: dAppServer/wails-build-action@v2.2
+        with:
+          build-name: nmea-sim
+          build-platform: windows/amd64,linux/amd64,darwin/arm64
+          nsis: true
+          package: true
