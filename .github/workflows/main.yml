@@ -11,9 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
       - name: Wails Build Action
         uses: dAppServer/wails-build-action@v2.2
         with:
