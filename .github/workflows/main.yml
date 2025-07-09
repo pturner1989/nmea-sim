@@ -17,9 +17,9 @@ jobs:
           - platform: "windows/amd64"
             os: windows-latest
             name: nmea-sim.exe
-#          - platform: "darwin/universal"
-#            os: macos-latest
-#            name: nmea-sim.dmg
+          - platform: "darwin/universal"
+            os: macos-latest
+            name: nmea-sim.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
