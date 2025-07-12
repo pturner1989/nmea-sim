@@ -3,6 +3,8 @@ package main
 
 import (
 	"embed"
+	"os"
+	"strings"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -16,6 +18,13 @@ var assets embed.FS
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
+
+	// Detect RTZ file from command line args
+	var rtzFile string
+	if len(os.Args) > 1 && strings.HasSuffix(strings.ToLower(os.Args[1]), ".rtz") {
+		rtzFile = os.Args[1]
+	}
+	app.rtzFileOnStartup = rtzFile // Add this field to your App struct
 
 	// Create application with options
 	err := wails.Run(&options.App{

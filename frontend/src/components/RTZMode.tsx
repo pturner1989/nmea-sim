@@ -1,13 +1,18 @@
 // src/components/RTZMode.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RTZModeProps, RTZConfig } from '../types';
 
-const RTZMode: React.FC<RTZModeProps> = ({ 
+interface RTZModeWithStartup extends RTZModeProps {
+  startupFile?: string | null;
+}
+
+const RTZMode: React.FC<RTZModeWithStartup> = ({ 
   onStart, 
   onUpdateSpeed, 
   onFileSelect,
   onValidateFile,
-  isRunning 
+  isRunning,
+  startupFile
 }) => {
   const [config, setConfig] = useState<RTZConfig>({
     filePath: '',
@@ -18,6 +23,17 @@ const RTZMode: React.FC<RTZModeProps> = ({
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [fileInfo, setFileInfo] = useState<any>(null);
   const [validating] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (startupFile && startupFile !== config.filePath) {
+      (async () => {
+        setConfig((c) => ({ ...c, filePath: startupFile }));
+        const validate = await onValidateFile(startupFile);
+        setFileInfo(validate);
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startupFile]);
 
   const clearFileSelection = () => {
     setConfig({ ...config, filePath: '' });
