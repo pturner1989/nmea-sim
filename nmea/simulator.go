@@ -411,7 +411,7 @@ func (s *Simulator) checkWaypointProximity() {
 	)
 
 	// FIX: If within proximity threshold, advance to next waypoint
-	const proximityThresholdNM = 0.05 // Reduced from 0.1 for better accuracy
+	const proximityThresholdNM = 0.02 // Reduced from 0.1 for better accuracy
 
 	if distance < proximityThresholdNM {
 		// Check if there's a next waypoint to navigate to
