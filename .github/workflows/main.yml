@@ -13,11 +13,11 @@ jobs:
         include:
           - platform: "linux/amd64"
             os: ubuntu-latest
-            name: nmea-sim
+            name: nmea-sim-linux
             nsis: false
           - platform: "windows/amd64"
             os: windows-latest
-            name: nmea-sim.exe
+            name: nmea-sim-win.exe
             nsis: true
     runs-on: ${{ matrix.os }}
     steps:
