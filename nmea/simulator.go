@@ -40,6 +40,15 @@ type RTZRoute struct {
 	Waypoints []Waypoint
 }
 
+// WaypointInfo contains current waypoint status information
+type WaypointInfo struct {
+	CurrentWaypoint int       `json:"currentWaypoint"`
+	TotalWaypoints  int       `json:"totalWaypoints"`
+	TargetWaypoint  *Waypoint `json:"targetWaypoint"`
+	DistanceToTarget float64  `json:"distanceToTarget"`
+	AutoNavigate    bool      `json:"autoNavigate"`
+}
+
 // RTZ XML structures for parsing
 type rtzRoute struct {
 	XMLName   xml.Name      `xml:"route"`
@@ -603,4 +612,139 @@ func (s *Simulator) IsRunning() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.running
+}
+
+// GetCurrentWaypoint returns the current target waypoint index
+func (s *Simulator) GetCurrentWaypoint() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.currentWaypoint
+}
+
+// GetWaypointCount returns the total number of waypoints in the route
+func (s *Simulator) GetWaypointCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.route == nil {
+		return 0
+	}
+	return len(s.route.Waypoints)
+}
+
+// AdvanceToNextWaypoint manually advances to the next waypoint
+func (s *Simulator) AdvanceToNextWaypoint() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.route == nil || s.currentWaypoint >= len(s.route.Waypoints)-1 {
+		return false
+	}
+
+	// Move to the current waypoint position before advancing
+	currentWP := s.route.Waypoints[s.currentWaypoint]
+	s.state.Position = Position{
+		Latitude:  currentWP.Latitude,
+		Longitude: currentWP.Longitude,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.currentWaypoint++
+
+	if s.currentWaypoint < len(s.route.Waypoints) {
+		targetWP := s.route.Waypoints[s.currentWaypoint]
+		s.state.Course = s.calculateCourse(
+			s.state.Position.Latitude, s.state.Position.Longitude,
+			targetWP.Latitude, targetWP.Longitude,
+		)
+	} else {
+		s.autoNavigate = false
+		s.state.Speed = 0
+	}
+
+	return true
+}
+
+// GoToPreviousWaypoint manually goes to the previous waypoint
+func (s *Simulator) GoToPreviousWaypoint() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.route == nil || s.currentWaypoint <= 1 {
+		return false
+	}
+
+	s.currentWaypoint--
+	s.autoNavigate = true
+
+	// Move to the previous waypoint position
+	prevWP := s.route.Waypoints[s.currentWaypoint-1]
+	s.state.Position = Position{
+		Latitude:  prevWP.Latitude,
+		Longitude: prevWP.Longitude,
+		Timestamp: time.Now().UTC(),
+	}
+
+	// Set course to the target waypoint
+	targetWP := s.route.Waypoints[s.currentWaypoint]
+	s.state.Course = s.calculateCourse(
+		s.state.Position.Latitude, s.state.Position.Longitude,
+		targetWP.Latitude, targetWP.Longitude,
+	)
+
+	return true
+}
+
+// SetCurrentWaypoint manually sets the current target waypoint
+func (s *Simulator) SetCurrentWaypoint(waypointIndex int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.route == nil || waypointIndex < 1 || waypointIndex >= len(s.route.Waypoints) {
+		return false
+	}
+
+	// Move to the previous waypoint position (where vessel should be)
+	prevWP := s.route.Waypoints[waypointIndex-1]
+	s.state.Position = Position{
+		Latitude:  prevWP.Latitude,
+		Longitude: prevWP.Longitude,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.currentWaypoint = waypointIndex
+	s.autoNavigate = true
+
+	// Set course to the target waypoint
+	targetWP := s.route.Waypoints[s.currentWaypoint]
+	s.state.Course = s.calculateCourse(
+		s.state.Position.Latitude, s.state.Position.Longitude,
+		targetWP.Latitude, targetWP.Longitude,
+	)
+
+	return true
+}
+
+// GetWaypointInfo returns current waypoint status information
+func (s *Simulator) GetWaypointInfo() WaypointInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	info := WaypointInfo{
+		CurrentWaypoint: s.currentWaypoint,
+		AutoNavigate:    s.autoNavigate,
+	}
+
+	if s.route != nil {
+		info.TotalWaypoints = len(s.route.Waypoints)
+		if s.currentWaypoint >= 0 && s.currentWaypoint < len(s.route.Waypoints) {
+			targetWP := s.route.Waypoints[s.currentWaypoint]
+			info.TargetWaypoint = &targetWP
+			info.DistanceToTarget = s.calculateDistance(
+				s.state.Position.Latitude, s.state.Position.Longitude,
+				targetWP.Latitude, targetWP.Longitude,
+			)
+		}
+	}
+
+	return info
 }

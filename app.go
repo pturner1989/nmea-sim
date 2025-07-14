@@ -26,12 +26,13 @@ type App struct {
 
 // SimulationStatus represents the current state for frontend
 type SimulationStatus struct {
-	IsRunning bool      `json:"isRunning"`
-	Mode      string    `json:"mode"` // "manual" or "rtz"
-	Position  Position  `json:"position"`
-	Speed     float64   `json:"speed"`
-	Course    float64   `json:"course"`
-	Route     *RTZRoute `json:"route,omitempty"`
+	IsRunning       bool                   `json:"isRunning"`
+	Mode            string                 `json:"mode"` // "manual" or "rtz"
+	Position        Position               `json:"position"`
+	Speed           float64                `json:"speed"`
+	Course          float64                `json:"course"`
+	Route           *RTZRoute              `json:"route,omitempty"`
+	WaypointStatus  map[string]interface{} `json:"waypointStatus,omitempty"`
 }
 
 // Position for JSON serialization
@@ -263,6 +264,25 @@ func (a *App) GetStatus() (SimulationStatus, error) {
 					Longitude: wp.Longitude,
 				}
 			}
+
+			// Add waypoint status for RTZ mode
+			if a.mode == "rtz" {
+				info := a.simulator.GetWaypointInfo()
+				status.WaypointStatus = map[string]interface{}{
+					"currentWaypoint":   info.CurrentWaypoint,
+					"totalWaypoints":    info.TotalWaypoints,
+					"autoNavigate":      info.AutoNavigate,
+					"distanceToTarget":  info.DistanceToTarget,
+				}
+
+				if info.TargetWaypoint != nil {
+					status.WaypointStatus["targetWaypoint"] = map[string]interface{}{
+						"id":        info.TargetWaypoint.ID,
+						"latitude":  info.TargetWaypoint.Latitude,
+						"longitude": info.TargetWaypoint.Longitude,
+					}
+				}
+			}
 		}
 	}
 
@@ -424,4 +444,123 @@ func (a *App) GetSimulatorInfo() map[string]interface{} {
 		"format":    "NMEA 0183",
 		"sentences": []string{"GGA", "RMC", "GLL", "VTG", "GSA", "GSV"},
 	}
+}
+
+// AdvanceWaypoint advances to the next waypoint in RTZ mode
+func (a *App) AdvanceWaypoint() error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if !a.isRunning || a.simulator == nil {
+		return fmt.Errorf("no simulation is running")
+	}
+
+	if a.mode != "rtz" {
+		return fmt.Errorf("waypoint navigation only available in RTZ mode")
+	}
+
+	if !a.simulator.AdvanceToNextWaypoint() {
+		return fmt.Errorf("cannot advance waypoint - already at last waypoint or no route loaded")
+	}
+
+	return nil
+}
+
+// PreviousWaypoint goes back to the previous waypoint in RTZ mode
+func (a *App) PreviousWaypoint() error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if !a.isRunning || a.simulator == nil {
+		return fmt.Errorf("no simulation is running")
+	}
+
+	if a.mode != "rtz" {
+		return fmt.Errorf("waypoint navigation only available in RTZ mode")
+	}
+
+	if !a.simulator.GoToPreviousWaypoint() {
+		return fmt.Errorf("cannot go to previous waypoint - already at first waypoint or no route loaded")
+	}
+
+	return nil
+}
+
+// SetWaypoint jumps to a specific waypoint in RTZ mode
+func (a *App) SetWaypoint(waypointIndex int) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if !a.isRunning || a.simulator == nil {
+		return fmt.Errorf("no simulation is running")
+	}
+
+	if a.mode != "rtz" {
+		return fmt.Errorf("waypoint navigation only available in RTZ mode")
+	}
+
+	if !a.simulator.SetCurrentWaypoint(waypointIndex) {
+		return fmt.Errorf("invalid waypoint index or no route loaded")
+	}
+
+	return nil
+}
+
+// GetWaypointStatus returns current waypoint status for RTZ mode
+func (a *App) GetWaypointStatus() (map[string]interface{}, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if !a.isRunning || a.simulator == nil {
+		return nil, fmt.Errorf("no simulation is running")
+	}
+
+	if a.mode != "rtz" {
+		return nil, fmt.Errorf("waypoint status only available in RTZ mode")
+	}
+
+	info := a.simulator.GetWaypointInfo()
+
+	result := map[string]interface{}{
+		"currentWaypoint": info.CurrentWaypoint,
+		"totalWaypoints":  info.TotalWaypoints,
+		"autoNavigate":    info.AutoNavigate,
+		"distanceToTarget": info.DistanceToTarget,
+	}
+
+	if info.TargetWaypoint != nil {
+		result["targetWaypoint"] = map[string]interface{}{
+			"id":        info.TargetWaypoint.ID,
+			"latitude":  info.TargetWaypoint.Latitude,
+			"longitude": info.TargetWaypoint.Longitude,
+		}
+	}
+
+	return result, nil
+}
+
+// PauseSimulation pauses the current simulation
+func (a *App) PauseSimulation() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if !a.isRunning || a.simulator == nil {
+		return fmt.Errorf("no simulation is running")
+	}
+
+	a.simulator.UpdateSpeed(0)
+	return nil
+}
+
+// ResumeSimulation resumes the paused simulation with previous speed
+func (a *App) ResumeSimulation(speed float64) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if !a.isRunning || a.simulator == nil {
+		return fmt.Errorf("no simulation is running")
+	}
+
+	a.simulator.UpdateSpeed(speed)
+	return nil
 }

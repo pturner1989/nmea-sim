@@ -11,7 +11,10 @@ const RTZMode: React.FC<RTZModeWithStartup> = ({
   onUpdateSpeed, 
   onFileSelect,
   onValidateFile,
+  onAdvanceWaypoint,
+  onPreviousWaypoint,
   isRunning,
+  waypointStatus,
   startupFile
 }) => {
   const [config, setConfig] = useState<RTZConfig>({
@@ -289,10 +292,73 @@ const RTZMode: React.FC<RTZModeWithStartup> = ({
           </div>
         )}
 
-        {/* Runtime Speed Control */}
+        {/* Runtime Controls */}
         {isRunning && (
           <div className="pt-6 border-t border-gray-700">
             <h3 className="text-lg font-medium text-gray-300 mb-4">Runtime Controls</h3>
+            
+            {/* Waypoint Status and Controls */}
+            {waypointStatus && (
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-gray-400 mb-3">Waypoint Navigation</h4>
+                
+                {/* Current Status */}
+                <div className="bg-gray-700 rounded-lg p-4 mb-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-400">Current Progress:</span>
+                      <div className="text-white font-medium">
+                        Waypoint {waypointStatus.currentWaypoint + 1} of {waypointStatus.totalWaypoints}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Distance to Target:</span>
+                      <div className="text-white font-medium">
+                        {waypointStatus.distanceToTarget.toFixed(2)} NM
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {waypointStatus.targetWaypoint && (
+                    <div className="mt-3 pt-3 border-t border-gray-600">
+                      <div className="text-xs text-gray-400">Target Waypoint:</div>
+                      <div className="text-white font-mono text-sm">
+                        {waypointStatus.targetWaypoint.id} ({waypointStatus.targetWaypoint.latitude.toFixed(6)}, {waypointStatus.targetWaypoint.longitude.toFixed(6)})
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mt-2 flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${waypointStatus.autoNavigate ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
+                    <span className="text-xs text-gray-400">
+                      {waypointStatus.autoNavigate ? 'Auto Navigation Enabled' : 'Manual Navigation Mode'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Navigation Controls */}
+                <div className="flex space-x-2 mb-4">
+                  <button
+                    onClick={onPreviousWaypoint}
+                    disabled={waypointStatus.currentWaypoint <= 1}
+                    className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                    title={waypointStatus.currentWaypoint <= 1 ? "Already at first waypoint" : "Go to previous waypoint"}
+                  >
+                    ← Previous
+                  </button>
+                  <button
+                    onClick={onAdvanceWaypoint}
+                    disabled={waypointStatus.currentWaypoint >= waypointStatus.totalWaypoints - 1}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                    title={waypointStatus.currentWaypoint >= waypointStatus.totalWaypoints - 1 ? "Already at last waypoint" : "Skip to next waypoint"}
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Speed Control */}
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Update Speed</label>
               <div className="flex space-x-2">

@@ -1,16 +1,18 @@
 // App.tsx
 import { useState, useEffect } from 'react';
-import { StartManualSimulation, StartRTZSimulation, StopSimulation, UpdateSpeed, UpdateCourse, GetStatus, OpenFileDialog, ValidateRTZFile } from '../wailsjs/go/main/App';
+import { StartManualSimulation, StartRTZSimulation, StopSimulation, UpdateSpeed, UpdateCourse, GetStatus, OpenFileDialog, ValidateRTZFile, AdvanceWaypoint, PreviousWaypoint, GetWaypointStatus, PauseSimulation, ResumeSimulation } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import StatusBar from './components/StatusBar';
-import ManualMode from './components/ManualMode';
-import RTZMode from './components/RTZMode';
-//import Sidebar from './components/Sidebar';
+import SimulationSetup from './components/SimulationSetup';
+import MonitoringInterface from './components/MonitoringInterface';
 import { SimulationStatus, ManualConfig, RTZConfig } from './types';
 import './App.css';
 
+type AppState = 'setup' | 'monitoring';
+
 function App() {
-  const [currentMode, setCurrentMode] = useState<'manual' | 'rtz'>('manual');
+  const [appState, setAppState] = useState<AppState>('setup');
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [lastSpeed, setLastSpeed] = useState<number>(8);
   const [status, setStatus] = useState<SimulationStatus>({
     isRunning: false,
     mode: 'manual',
@@ -30,6 +32,16 @@ function App() {
       if (status.isRunning) {
         try {
           const newStatus = await GetStatus();
+          // Also get waypoint status if in RTZ mode and running
+          let waypointStatus = undefined;
+          if (newStatus.mode === 'rtz' && newStatus.isRunning) {
+            try {
+              waypointStatus = await GetWaypointStatus();
+            } catch (error) {
+              console.error('Failed to get waypoint status:', error);
+            }
+          }
+
           // Convert the response to our expected format
           setStatus({
             isRunning: newStatus.isRunning || false,
@@ -41,7 +53,8 @@ function App() {
             },
             speed: newStatus.speed || 0,
             course: newStatus.course || 0,
-            route: newStatus.route as any // Use 'as any' to avoid type conflicts
+            route: newStatus.route as any, // Use 'as any' to avoid type conflicts
+            waypointStatus: waypointStatus as any
           });
         } catch (error) {
           console.error('Failed to get status:', error);
@@ -55,16 +68,40 @@ function App() {
   useEffect(() => {
     // Listen for backend event
     const off = EventsOn("openRTZFile", (filePath: string) => {
-      setCurrentMode('rtz');
       setStartupRTZFile(filePath);
+      // Auto-start RTZ simulation with default settings when opened from file association
+      handleAutoStartRTZ(filePath);
     });
     return () => { off(); };
   }, []);
+
+  const handleAutoStartRTZ = async (filePath: string) => {
+    try {
+      // Validate the file first
+      await handleValidateFile(filePath);
+      // Start with default speed
+      const config: RTZConfig = {
+        filePath: filePath,
+        speed: 12
+      };
+      await StartRTZSimulation(config);
+      setStatus(prev => ({ ...prev, isRunning: true, mode: 'rtz' }));
+      setLastSpeed(12);
+      setAppState('monitoring');
+      showToast('RTZ simulation started from file association', 'success');
+    } catch (error) {
+      showToast(`Failed to start RTZ simulation: ${error}`, 'error');
+      // If auto-start fails, show setup screen with the file pre-selected
+      setAppState('setup');
+    }
+  };
 
   const handleStartManual = async (config: ManualConfig) => {
     try {
       await StartManualSimulation(config);
       setStatus(prev => ({ ...prev, isRunning: true, mode: 'manual' }));
+      setLastSpeed(config.speed);
+      setAppState('monitoring');
       showToast('Manual simulation started', 'success');
     } catch (error) {
       showToast(`Failed to start simulation: ${error}`, 'error');
@@ -75,20 +112,51 @@ function App() {
     try {
       await StartRTZSimulation(config);
       setStatus(prev => ({ ...prev, isRunning: true, mode: 'rtz' }));
+      setLastSpeed(config.speed);
+      setAppState('monitoring');
       showToast('RTZ simulation started', 'success');
     } catch (error) {
       showToast(`Failed to start simulation: ${error}`, 'error');
     }
   };
 
-  const handleStop = async () => {
+
+  const handlePause = async () => {
     try {
-      await StopSimulation();
-      setStatus(prev => ({ ...prev, isRunning: false }));
-      showToast('Simulation stopped', 'info');
+      setLastSpeed(status.speed);
+      await PauseSimulation();
+      setIsPaused(true);
+      showToast('Simulation paused', 'info');
     } catch (error) {
-      showToast(`Failed to stop simulation: ${error}`, 'error');
+      showToast(`Failed to pause simulation: ${error}`, 'error');
     }
+  };
+
+  const handleResume = async () => {
+    try {
+      await ResumeSimulation(lastSpeed);
+      setIsPaused(false);
+      showToast('Simulation resumed', 'success');
+    } catch (error) {
+      showToast(`Failed to resume simulation: ${error}`, 'error');
+    }
+  };
+
+  const handleNewSimulation = async () => {
+    // Stop current simulation if running
+    if (status.isRunning) {
+      try {
+        await StopSimulation();
+        setStatus(prev => ({ ...prev, isRunning: false }));
+        setIsPaused(false);
+        showToast('Simulation stopped', 'info');
+      } catch (error) {
+        showToast(`Failed to stop simulation: ${error}`, 'error');
+      }
+    }
+    
+    setAppState('setup');
+    setStartupRTZFile(null);
   };
 
   const handleUpdateSpeed = async (speed: number) => {
@@ -130,6 +198,25 @@ function App() {
     }
   };
 
+  const handleAdvanceWaypoint = async () => {
+    try {
+      await AdvanceWaypoint();
+      showToast('Advanced to next waypoint', 'success');
+    } catch (error) {
+      showToast(`Failed to advance waypoint: ${error}`, 'error');
+    }
+  };
+
+  const handlePreviousWaypoint = async () => {
+    try {
+      await PreviousWaypoint();
+      showToast('Moved to previous waypoint', 'success');
+    } catch (error) {
+      showToast(`Failed to go to previous waypoint: ${error}`, 'error');
+    }
+  };
+
+
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     // Toast notification implementation
     const toast = document.createElement('div');
@@ -154,79 +241,33 @@ function App() {
     }, 3000);
   };
 
+  if (appState === 'setup') {
+    return (
+      <SimulationSetup
+        onStartManual={handleStartManual}
+        onStartRTZ={handleStartRTZ}
+        onUpdateSpeed={handleUpdateSpeed}
+        onFileSelect={handleFileSelect}
+        onValidateFile={handleValidateFile}
+        onAdvanceWaypoint={handleAdvanceWaypoint}
+        onPreviousWaypoint={handlePreviousWaypoint}
+        startupFile={startupRTZFile}
+      />
+    );
+  }
+
   return (
-    <div className="bg-gray-900 text-white min-h-screen">
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto">
-        {/* Status Bar */}
-        <StatusBar 
-          status={status}
-          onStart={currentMode === 'manual' ? handleStartManual : handleStartRTZ}
-          onStop={handleStop}
-        />
-
-        {/* Tabs */}
-        <div className="mb-2 px-4">
-          <div className="border-b border-gray-700">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setCurrentMode('manual')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  currentMode === 'manual'
-                    ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                Manual Mode
-              </button>
-              <button
-                onClick={() => setCurrentMode('rtz')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  currentMode === 'rtz'
-                    ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                RTZ Route
-              </button>
-            </nav>
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 px-4">
-                      {/* Main Panel */}
-          <div className="lg:col-span-2">
-            {currentMode === 'manual' ? (
-              <ManualMode
-                onStart={handleStartManual}
-                onUpdateSpeed={handleUpdateSpeed}
-                onUpdateCourse={handleUpdateCourse}
-                isRunning={status.isRunning}
-              />
-            ) : (
-              <RTZMode
-                onStart={handleStartRTZ}
-                onUpdateSpeed={handleUpdateSpeed}
-                onFileSelect={handleFileSelect}
-                onValidateFile={handleValidateFile}
-                isRunning={status.isRunning}
-                startupFile={startupRTZFile}
-              />
-            )}
-          </div>
-
-          {/* Sidebar TBC */}
-          {/* <div className="lg:col-span-1">
-            <Sidebar 
-              route={status.route}
-              mode={currentMode}
-            />
-          </div> */}
-        </div>
-      </div>
-      <div className='text-center pt-1 text-slate-300 text-xs'>Copyright - MaritimeDevs.org</div>
-    </div>
+    <MonitoringInterface
+      status={status}
+      onPause={handlePause}
+      onResume={handleResume}
+      onNewSimulation={handleNewSimulation}
+      onUpdateSpeed={handleUpdateSpeed}
+      onUpdateCourse={handleUpdateCourse}
+      onAdvanceWaypoint={handleAdvanceWaypoint}
+      onPreviousWaypoint={handlePreviousWaypoint}
+      isPaused={isPaused}
+    />
   );
 }
 
