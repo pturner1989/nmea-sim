@@ -36,12 +36,21 @@ jobs:
         if: matrix.platform == 'windows/amd64'
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://www.ssl.com/download/codesigntool-for-windows/" -OutFile "CodeSignTool.zip"
-          Expand-Archive -Path "CodeSignTool.zip" -DestinationPath "CodeSignTool"
+          # Download CodeSignTool from the direct download link
+          Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/1.3.0/CodeSignTool-1.3.0-windows.zip" -OutFile "CodeSignTool.zip"
+          Expand-Archive -Path "CodeSignTool.zip" -DestinationPath "CodeSignTool" -Force
+          # List contents to verify extraction
+          Get-ChildItem -Path "CodeSignTool" -Recurse
           
       - name: Sign Windows Binary with SSL.com
         if: matrix.platform == 'windows/amd64'
         shell: powershell
         run: |
-          $env:PATH += ";$PWD\CodeSignTool"
-          CodeSignTool.bat sign -input_file_path="${{ github.workspace }}\build\bin\${{ matrix.name }}" -username="${{ secrets.ES_USERNAME }}" -password="${{ secrets.ES_PASSWORD }}" -credential_id="${{ secrets.CREDENTIAL_ID }}" -totp_secret="${{ secrets.ES_TOTP_SECRET }}"
+          # Use full path to CodeSignTool
+          $toolPath = Join-Path $PWD "CodeSignTool\CodeSignTool.bat"
+          if (Test-Path $toolPath) {
+            & $toolPath sign -input_file_path="${{ github.workspace }}\build\bin\${{ matrix.name }}" -username="${{ secrets.ES_USERNAME }}" -password="${{ secrets.ES_PASSWORD }}" -credential_id="${{ secrets.CREDENTIAL_ID }}" -totp_secret="${{ secrets.ES_TOTP_SECRET }}"
+          } else {
+            Write-Error "CodeSignTool.bat not found at $toolPath"
+            Get-ChildItem -Path "CodeSignTool" -Recurse
+          }
