@@ -32,14 +32,16 @@ jobs:
           package: true
           nsis: ${{ matrix.nsis }}
 
-      - name: Sign Windows Binary
+      - name: Download and Install SSL.com CodeSignTool
         if: matrix.platform == 'windows/amd64'
-        uses: sslcom/actions-codesigner@develop
-        with:
-          command: sign
-          username: ${{ secrets.ES_USERNAME }}
-          password: ${{ secrets.ES_PASSWORD }}
-          credential_id: ${{ secrets.CREDENTIAL_ID }}
-          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}/build/bin/${{ matrix.name }}
-          output_path: ${{ github.workspace }}/build/bin
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://www.ssl.com/download/codesigntool-for-windows/" -OutFile "CodeSignTool.zip"
+          Expand-Archive -Path "CodeSignTool.zip" -DestinationPath "CodeSignTool"
+          
+      - name: Sign Windows Binary with SSL.com
+        if: matrix.platform == 'windows/amd64'
+        shell: powershell
+        run: |
+          $env:PATH += ";$PWD\CodeSignTool"
+          CodeSignTool.bat sign -input_file_path="${{ github.workspace }}\build\bin\${{ matrix.name }}" -username="${{ secrets.ES_USERNAME }}" -password="${{ secrets.ES_PASSWORD }}" -credential_id="${{ secrets.CREDENTIAL_ID }}" -totp_secret="${{ secrets.ES_TOTP_SECRET }}"
