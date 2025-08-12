@@ -17,6 +17,18 @@ export interface RTZRoute {
   waypoints?: Waypoint[]; // Made optional to match generated type
 }
 
+export interface WaypointStatus {
+  currentWaypoint: number;
+  totalWaypoints: number;
+  autoNavigate: boolean;
+  distanceToTarget: number;
+  targetWaypoint?: {
+    id: string;
+    latitude: number;
+    longitude: number;
+  };
+}
+
 export interface SimulationStatus {
   isRunning: boolean;
   mode: string;
@@ -24,6 +36,7 @@ export interface SimulationStatus {
   speed: number;
   course: number;
   route?: any; // Use any for route to avoid type conflicts
+  waypointStatus?: any;
 }
 
 export interface ManualConfig {
@@ -57,7 +70,10 @@ export interface RTZModeProps {
   onUpdateSpeed: (speed: number) => Promise<void>;
   onFileSelect: () => Promise<string>;
   onValidateFile: (filePath: string) => Promise<any>;
+  onAdvanceWaypoint: () => Promise<void>;
+  onPreviousWaypoint: () => Promise<void>;
   isRunning: boolean;
+  waypointStatus?: any;
 }
 
 export interface SidebarProps {

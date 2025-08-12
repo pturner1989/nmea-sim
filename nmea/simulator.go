@@ -40,6 +40,15 @@ type RTZRoute struct {
 	Waypoints []Waypoint
 }
 
+// WaypointInfo contains current waypoint status information
+type WaypointInfo struct {
+	CurrentWaypoint int       `json:"currentWaypoint"`
+	TotalWaypoints  int       `json:"totalWaypoints"`
+	TargetWaypoint  *Waypoint `json:"targetWaypoint"`
+	DistanceToTarget float64  `json:"distanceToTarget"`
+	AutoNavigate    bool      `json:"autoNavigate"`
+}
+
 // RTZ XML structures for parsing
 type rtzRoute struct {
 	XMLName   xml.Name      `xml:"route"`
@@ -86,6 +95,11 @@ type SimulatorConfig struct {
 
 // NewSimulator creates a new NMEA simulator
 func NewSimulator(config SimulatorConfig) (*Simulator, error) {
+	// Default to localhost if no multicast IP specified
+	if config.MulticastIP == "" {
+		config.MulticastIP = "127.0.0.1"
+	}
+
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", config.MulticastIP, config.Port))
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve multicast address: %w", err)
@@ -166,7 +180,6 @@ func (s *Simulator) LoadRTZRoute(rtzData []byte, initialSpeed float64) error {
 	defer s.mu.Unlock()
 
 	s.route = route
-	s.currentWaypoint = 0
 	s.autoNavigate = true
 
 	// Set initial position to first waypoint
@@ -178,10 +191,15 @@ func (s *Simulator) LoadRTZRoute(rtzData []byte, initialSpeed float64) error {
 	}
 	s.state.Speed = initialSpeed
 
-	// Calculate initial course to next waypoint if available
+	// FIX: Set currentWaypoint to the target waypoint (next waypoint to reach)
 	if len(route.Waypoints) > 1 {
+		s.currentWaypoint = 1 // Target the second waypoint
 		s.state.Course = s.calculateCourse(firstWP.Latitude, firstWP.Longitude,
 			route.Waypoints[1].Latitude, route.Waypoints[1].Longitude)
+	} else {
+		// Single waypoint route - already at destination
+		s.currentWaypoint = 0
+		s.autoNavigate = false
 	}
 
 	return nil
@@ -236,6 +254,38 @@ func (s *Simulator) simulationLoop() {
 	}
 }
 
+// calculateCrossTrackError calculates how far off the intended track the vessel is
+func (s *Simulator) calculateCrossTrackError() float64 {
+	if s.route == nil || s.currentWaypoint == 0 || s.currentWaypoint >= len(s.route.Waypoints) {
+		return 0
+	}
+
+	// Get the previous waypoint and current target waypoint
+	prevWP := s.route.Waypoints[s.currentWaypoint-1]
+	targetWP := s.route.Waypoints[s.currentWaypoint]
+	currentPos := s.state.Position
+
+	// Calculate the great circle distance from current position to the intended track
+	// This is a simplified cross-track error calculation
+
+	// Distance from previous waypoint to current position
+	d13 := s.calculateDistance(prevWP.Latitude, prevWP.Longitude,
+		currentPos.Latitude, currentPos.Longitude)
+
+	// Bearing from previous waypoint to current position
+	θ13 := s.calculateCourse(prevWP.Latitude, prevWP.Longitude,
+		currentPos.Latitude, currentPos.Longitude) * math.Pi / 180
+
+	// Bearing from previous waypoint to target waypoint
+	θ12 := s.calculateCourse(prevWP.Latitude, prevWP.Longitude,
+		targetWP.Latitude, targetWP.Longitude) * math.Pi / 180
+
+	// Cross-track error in nautical miles (positive = right of track)
+	dxt := math.Asin(math.Sin(d13/3440.065)*math.Sin(θ13-θ12)) * 3440.065
+
+	return dxt
+}
+
 // updatePosition calculates new position based on current speed and course
 func (s *Simulator) updatePosition() {
 	s.mu.Lock()
@@ -251,11 +301,33 @@ func (s *Simulator) updatePosition() {
 	// Distance traveled in nautical miles
 	distanceNM := s.state.Speed * timeElapsed
 
-	// Calculate new position
+	// Apply cross-track error correction if following a route
+	courseToUse := s.state.Course
+	if s.autoNavigate && s.route != nil && s.currentWaypoint > 0 {
+		crossTrackError := s.calculateCrossTrackError()
+
+		// Apply proportional correction (maximum 30 degrees correction)
+		const maxCorrectionDegrees = 30.0
+		const crossTrackGain = 10.0 // Degrees correction per NM of error
+
+		correctionDegrees := math.Max(-maxCorrectionDegrees,
+			math.Min(maxCorrectionDegrees, -crossTrackError*crossTrackGain))
+
+		courseToUse = s.state.Course + correctionDegrees
+
+		// Normalize course to 0-360
+		if courseToUse < 0 {
+			courseToUse += 360
+		} else if courseToUse >= 360 {
+			courseToUse -= 360
+		}
+	}
+
+	// Calculate new position using the corrected course
 	newLat, newLon := s.calculateNewPosition(
 		s.state.Position.Latitude,
 		s.state.Position.Longitude,
-		s.state.Course,
+		courseToUse,
 		distanceNM,
 	)
 
@@ -334,26 +406,39 @@ func (s *Simulator) calculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	return earthRadiusNM * c
 }
 
-// checkWaypointProximity checks if we're close to the current waypoint and advances if needed
+// checkWaypointProximity checks if we're close to the target waypoint and advances if needed
 func (s *Simulator) checkWaypointProximity() {
 	if s.route == nil || s.currentWaypoint >= len(s.route.Waypoints) {
 		return
 	}
 
-	currentWP := s.route.Waypoints[s.currentWaypoint]
+	// FIX: Check distance to the target waypoint (where we're going)
+	targetWP := s.route.Waypoints[s.currentWaypoint]
 	distance := s.calculateDistance(
 		s.state.Position.Latitude, s.state.Position.Longitude,
-		currentWP.Latitude, currentWP.Longitude,
+		targetWP.Latitude, targetWP.Longitude,
 	)
 
-	// If within 0.1 nautical miles of waypoint, advance to next
-	if distance < 0.1 && s.currentWaypoint < len(s.route.Waypoints)-1 {
-		s.currentWaypoint++
-		nextWP := s.route.Waypoints[s.currentWaypoint]
-		s.state.Course = s.calculateCourse(
-			s.state.Position.Latitude, s.state.Position.Longitude,
-			nextWP.Latitude, nextWP.Longitude,
-		)
+	// FIX: If within proximity threshold, advance to next waypoint
+	const proximityThresholdNM = 0.02 // Reduced from 0.1 for better accuracy
+
+	if distance < proximityThresholdNM {
+		// Check if there's a next waypoint to navigate to
+		if s.currentWaypoint < len(s.route.Waypoints)-1 {
+			// Advance to next waypoint
+			s.currentWaypoint++
+			nextTargetWP := s.route.Waypoints[s.currentWaypoint]
+
+			// Update course to the new target waypoint
+			s.state.Course = s.calculateCourse(
+				s.state.Position.Latitude, s.state.Position.Longitude,
+				nextTargetWP.Latitude, nextTargetWP.Longitude,
+			)
+		} else {
+			// Reached final waypoint - stop auto navigation
+			s.autoNavigate = false
+			s.state.Speed = 0 // Optional: stop the vessel
+		}
 	}
 }
 
@@ -527,4 +612,139 @@ func (s *Simulator) IsRunning() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.running
+}
+
+// GetCurrentWaypoint returns the current target waypoint index
+func (s *Simulator) GetCurrentWaypoint() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.currentWaypoint
+}
+
+// GetWaypointCount returns the total number of waypoints in the route
+func (s *Simulator) GetWaypointCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.route == nil {
+		return 0
+	}
+	return len(s.route.Waypoints)
+}
+
+// AdvanceToNextWaypoint manually advances to the next waypoint
+func (s *Simulator) AdvanceToNextWaypoint() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.route == nil || s.currentWaypoint >= len(s.route.Waypoints)-1 {
+		return false
+	}
+
+	// Move to the current waypoint position before advancing
+	currentWP := s.route.Waypoints[s.currentWaypoint]
+	s.state.Position = Position{
+		Latitude:  currentWP.Latitude,
+		Longitude: currentWP.Longitude,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.currentWaypoint++
+
+	if s.currentWaypoint < len(s.route.Waypoints) {
+		targetWP := s.route.Waypoints[s.currentWaypoint]
+		s.state.Course = s.calculateCourse(
+			s.state.Position.Latitude, s.state.Position.Longitude,
+			targetWP.Latitude, targetWP.Longitude,
+		)
+	} else {
+		s.autoNavigate = false
+		s.state.Speed = 0
+	}
+
+	return true
+}
+
+// GoToPreviousWaypoint manually goes to the previous waypoint
+func (s *Simulator) GoToPreviousWaypoint() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.route == nil || s.currentWaypoint <= 1 {
+		return false
+	}
+
+	s.currentWaypoint--
+	s.autoNavigate = true
+
+	// Move to the previous waypoint position
+	prevWP := s.route.Waypoints[s.currentWaypoint-1]
+	s.state.Position = Position{
+		Latitude:  prevWP.Latitude,
+		Longitude: prevWP.Longitude,
+		Timestamp: time.Now().UTC(),
+	}
+
+	// Set course to the target waypoint
+	targetWP := s.route.Waypoints[s.currentWaypoint]
+	s.state.Course = s.calculateCourse(
+		s.state.Position.Latitude, s.state.Position.Longitude,
+		targetWP.Latitude, targetWP.Longitude,
+	)
+
+	return true
+}
+
+// SetCurrentWaypoint manually sets the current target waypoint
+func (s *Simulator) SetCurrentWaypoint(waypointIndex int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.route == nil || waypointIndex < 1 || waypointIndex >= len(s.route.Waypoints) {
+		return false
+	}
+
+	// Move to the previous waypoint position (where vessel should be)
+	prevWP := s.route.Waypoints[waypointIndex-1]
+	s.state.Position = Position{
+		Latitude:  prevWP.Latitude,
+		Longitude: prevWP.Longitude,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.currentWaypoint = waypointIndex
+	s.autoNavigate = true
+
+	// Set course to the target waypoint
+	targetWP := s.route.Waypoints[s.currentWaypoint]
+	s.state.Course = s.calculateCourse(
+		s.state.Position.Latitude, s.state.Position.Longitude,
+		targetWP.Latitude, targetWP.Longitude,
+	)
+
+	return true
+}
+
+// GetWaypointInfo returns current waypoint status information
+func (s *Simulator) GetWaypointInfo() WaypointInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	info := WaypointInfo{
+		CurrentWaypoint: s.currentWaypoint,
+		AutoNavigate:    s.autoNavigate,
+	}
+
+	if s.route != nil {
+		info.TotalWaypoints = len(s.route.Waypoints)
+		if s.currentWaypoint >= 0 && s.currentWaypoint < len(s.route.Waypoints) {
+			targetWP := s.route.Waypoints[s.currentWaypoint]
+			info.TargetWaypoint = &targetWP
+			info.DistanceToTarget = s.calculateDistance(
+				s.state.Position.Latitude, s.state.Position.Longitude,
+				targetWP.Latitude, targetWP.Longitude,
+			)
+		}
+	}
+
+	return info
 }

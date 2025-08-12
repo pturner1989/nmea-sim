@@ -120,6 +120,7 @@ export namespace main {
 	    speed: number;
 	    course: number;
 	    route?: RTZRoute;
+	    waypointStatus?: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
 	        return new SimulationStatus(source);
@@ -133,6 +134,7 @@ export namespace main {
 	        this.speed = source["speed"];
 	        this.course = source["course"];
 	        this.route = this.convertValues(source["route"], RTZRoute);
+	        this.waypointStatus = source["waypointStatus"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
