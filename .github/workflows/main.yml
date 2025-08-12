@@ -27,6 +27,18 @@ jobs:
       - name: Build Wails app
         run: |
           wails build -tags webkit2_41 -platform windows -nsis
+      - name: Sign Application with CodeSignTool
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{secrets.ES_USERNAME}}
+          password: ${{secrets.ES_PASSWORD}}
+          credential_id: ${{secrets.CREDENTIAL_ID}}
+          totp_secret: ${{secrets.ES_TOTP_SECRET}}
+          file_path: ${GITHUB_WORKSPACE}/build/bin/route-sim.exe
+          dir_path: ${GITHUB_WORKSPACE}/build/bin
+          malware_block: false
+          override: true
       - name: upload artifacts windows
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
