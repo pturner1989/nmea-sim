@@ -3,6 +3,10 @@ on: [push, pull_request]
 
 permissions:
   contents: write
+name: "example"
+on:
+  workflow_dispatch:
+    # This Action only starts when you go to Actions and manually run the workflow.
 
 jobs:
   package:
@@ -29,13 +33,13 @@ jobs:
           wails build
       - name: upload artifacts macOS
         if: matrix.platform == 'macos-latest'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: wails-binaries-macos
           path: build/bin/*
       - name: upload artifacts windows
         if: matrix.platform == 'windows-latest'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: wails-binaries-windows
           path: build/bin/*
