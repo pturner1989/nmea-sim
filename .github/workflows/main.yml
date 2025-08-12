@@ -8,7 +8,7 @@ jobs:
   package:
     strategy:
       matrix:
-        platform: [windows-latest]
+        platform: [ubuntu-latest]
         go-version: [1.24]
     runs-on: ${{ matrix.platform }}
     steps:
@@ -26,13 +26,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Build Wails app
         run: |
-          wails build
-      - name: upload artifacts macOS
-        if: matrix.platform == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: wails-binaries-macos
-          path: build/bin/*
+          wails build -tags webkit2_41 -platform windows -nsis
       - name: upload artifacts windows
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
