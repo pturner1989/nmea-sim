@@ -22,8 +22,14 @@ jobs:
         with:
           node-version: 14
       # You may need to manually build you frontend manually here, unless you have configured frontend build and install commands in wails.json.
+      - name: Install NSIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+          
       - name: Get Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        
       - name: Build Wails app
         run: |
           wails build -tags webkit2_41 -platform windows -nsis
@@ -39,7 +45,6 @@ jobs:
           override: true
           malware_block: false
       - name: upload artifacts windows
-        if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: wails-binaries-windows
