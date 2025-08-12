@@ -27,24 +27,17 @@ jobs:
       - name: Build Wails app
         run: |
           wails build -tags webkit2_41 -platform windows -nsis
-      - name: Setup Java for CodeSignTool
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y openjdk-11-jdk
-          
-      - name: Download and Setup CodeSignTool
-        run: |
-          wget https://github.com/SSLcom/CodeSignTool/releases/download/1.3.0/CodeSignTool-1.3.0-linux.tar.gz -O codesigntool.tar.gz
-          tar -xf codesigntool.tar.gz
-          chmod +x CodeSignTool-*/CodeSignTool.sh
-          
-      - name: Verify Credentials and Get Credential IDs
-        run: |
-          ./CodeSignTool-*/CodeSignTool.sh get_credential_ids -username="${{secrets.ES_USERNAME}}" -password="${{secrets.ES_PASSWORD}}" -totp_secret="${{secrets.ES_TOTP_SECRET}}"
-          
-      - name: Sign Application with CodeSignTool  
-        run: |
-          ./CodeSignTool-*/CodeSignTool.sh sign -username="${{secrets.ES_USERNAME}}" -password="${{secrets.ES_PASSWORD}}" -credential_id="${{secrets.CREDENTIAL_ID}}" -totp_secret="${{secrets.ES_TOTP_SECRET}}" -input_file_path="./build/bin/route-sim.exe" -override=true -malware_block=false
+      - name: Sign Application with CodeSignTool
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{secrets.ES_USERNAME}}
+          password: ${{secrets.ES_PASSWORD}}
+          credential_id: ${{secrets.CREDENTIAL_ID}}
+          totp_secret: ${{secrets.ES_TOTP_SECRET}}
+          file_path: ${GITHUB_WORKSPACE}/build/bin/route-sim.exe
+          override: true
+          malware_block: false
       - name: upload artifacts windows
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
