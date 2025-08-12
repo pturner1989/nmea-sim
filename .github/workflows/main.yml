@@ -3,10 +3,6 @@ on: [push, pull_request]
 
 permissions:
   contents: write
-name: "example"
-on:
-  workflow_dispatch:
-    # This Action only starts when you go to Actions and manually run the workflow.
 
 jobs:
   package:
