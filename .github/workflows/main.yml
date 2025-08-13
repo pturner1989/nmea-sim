@@ -5,29 +5,58 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  package:
     strategy:
-      fail-fast: false
       matrix:
-        platform: ["linux/amd64", "windows/amd64"]
-        include:
-          - platform: "linux/amd64"
-            os: ubuntu-latest
-            name: nmea-sim-linux
-            nsis: false
-          - platform: "windows/amd64"
-            os: windows-latest
-            name: nmea-sim-win.exe
-            nsis: true
-    runs-on: ${{ matrix.os }}
+        platform: [ubuntu-latest]
+        go-version: [1.24]
+    runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
+      - name: Install Go
+        uses: actions/setup-go@v2
         with:
-          submodules: recursive
-      - uses: dAppServer/wails-build-action@main
+          go-version: ${{ matrix.go-version }}
+      - name: setup node
+        uses: actions/setup-node@v2
         with:
-          build-name: ${{ matrix.name }}
-          build-platform: ${{ matrix.platform }}
-          wails-version: "v2.9.0"
-          package: true
-          nsis: ${{ matrix.nsis }}
+          node-version: 20
+      # You may need to manually build you frontend manually here, unless you have configured frontend build and install commands in wails.json.
+      - name: Install NSIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+          
+      - name: Get Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        
+      - name: Build Wails app
+        run: |
+          wails build -tags webkit2_41 -platform windows -nsis
+      - name: Sign Application with CodeSignTool
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{secrets.ES_USERNAME}}
+          password: ${{secrets.ES_PASSWORD}}
+          credential_id: ${{secrets.CREDENTIAL_ID}}
+          totp_secret: ${{secrets.ES_TOTP_SECRET}}
+          file_path: ${GITHUB_WORKSPACE}/build/bin/route-sim.exe
+          override: true
+          malware_block: false
+      - name: Sign Installer with CodeSignTool
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{secrets.ES_USERNAME}}
+          password: ${{secrets.ES_PASSWORD}}
+          credential_id: ${{secrets.CREDENTIAL_ID}}
+          totp_secret: ${{secrets.ES_TOTP_SECRET}}
+          file_path: ${GITHUB_WORKSPACE}/build/bin/route-sim-amd64-installer.exe
+          override: true
+          malware_block: false
+      - name: upload artifacts windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: wails-binaries-windows
+          path: build/bin/*
