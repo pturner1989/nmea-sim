@@ -20,7 +20,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v2
         with:
-          node-version: 14
+          node-version: 20
       # You may need to manually build you frontend manually here, unless you have configured frontend build and install commands in wails.json.
       - name: Install NSIS
         run: |
@@ -42,6 +42,17 @@ jobs:
           credential_id: ${{secrets.CREDENTIAL_ID}}
           totp_secret: ${{secrets.ES_TOTP_SECRET}}
           file_path: ${GITHUB_WORKSPACE}/build/bin/route-sim.exe
+          override: true
+          malware_block: false
+      - name: Sign Installer with CodeSignTool
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{secrets.ES_USERNAME}}
+          password: ${{secrets.ES_PASSWORD}}
+          credential_id: ${{secrets.CREDENTIAL_ID}}
+          totp_secret: ${{secrets.ES_TOTP_SECRET}}
+          file_path: ${GITHUB_WORKSPACE}/build/bin/route-sim-amd64-installer.exe
           override: true
           malware_block: false
       - name: upload artifacts windows
